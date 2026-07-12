@@ -1,6 +1,6 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from main import build_note, create_note, read_note, edit_note, delete_note, display_notes, display_sorted_notes
+from notes import create_note, read_note, edit_note, delete_note, display_notes, display_sorted_notes
 
 async def create_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
