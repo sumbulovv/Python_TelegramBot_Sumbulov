@@ -1,70 +1,69 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from notes import create_note, read_note, edit_note, delete_note, display_notes, display_sorted_notes
+from calendartgbot import CalendarTgBot
 
-async def create_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def create_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        note_text = " ".join(context.args)
-        note_name = str(update.effective_chat.id)
-        result = create_note(note_name, note_text)
-        if result:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=result)
-        else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="Заметка создана.")
+        event_name = context.args[0]
+        event_datetime = context.args[1]
+        event_time = context.args[2] if len(context.args) > 2 else None
+        event_details = " ".join(context.args[4:]) if len(context.args) > 4 else None
+        calendar = CalendarTgBot()
+        event_id = calendar.create_event(event_name, event_datetime, event_time, event_details)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Событие '{event_name}' создано с ID {event_id}.")
     except Exception as e:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
         
-async def read_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        note_name = str(update.effective_chat.id)
-        result = read_note(note_name)
-        if result:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=result)
+        event_id = int(context.args[0])
+        calendar = CalendarTgBot()
+        event = calendar.get_event(event_id)
+        if event:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Событие: {event}")
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="Заметка не найдена.")
-    except Exception as e:
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
-
-async def edit_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        note_name = str(update.effective_chat.id)
-        note_text = " ".join(context.args)
-        result = edit_note(note_name, note_text)
-        if result:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=result)
-        else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="Заметка не найдена.")
-    except Exception as e:
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
-
-async def delete_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        note_name = str(update.effective_chat.id)
-        result = delete_note(note_name)
-        if result:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=result)
-        else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="Заметка не найдена.")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие не найдено.")
     except Exception as e:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
         
-async def display_notes_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def delete_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        result = display_notes()
+        event_id = int(context.args[0])
+        calendar = CalendarTgBot()
+        result = calendar.delete_event(event_id)
         if result:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="Список заметок: \n" + "\n".join(result))
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие удалено.")
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="Заметки не найдены.")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие не найдено.")
     except Exception as e:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
         
-async def display_notes_reverse_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def list_events_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        result = display_sorted_notes()
-        if result:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="Список заметок в обратном порядке: \n" + "\n".join(result))
+        calendar = CalendarTgBot()
+        events = calendar.list_events()
+        if events:
+            events_text = "\n".join([f"ID: {event['id']}, Name: {event['name']}, Date: {event['date']}, Details: {event['details']}" for event in events])
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Список событий:\n{events_text}")
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="Заметки не найдены.")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="События не найдены.")
+    except Exception as e:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
+        
+async def update_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        event_id = int(context.args[0])
+        event_name = context.args[1] if len(context.args) > 1 else None
+        event_datetime = context.args[2] if len(context.args) > 2 else None
+        event_details = " ".join(context.args[3:]) if len(context.args) > 3 else None
+        event_time = context.args[4] if len(context.args) > 4 else None
+        calendar = CalendarTgBot()
+        result = calendar.update_event(event_id, name=event_name, date=event_datetime, time=event_time, details=event_details)
+        if result:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие обновлено.")
+        else:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие не найдено.")
     except Exception as e:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
 

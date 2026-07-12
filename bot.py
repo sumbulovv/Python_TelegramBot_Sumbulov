@@ -2,13 +2,12 @@ import os
 from dotenv import load_dotenv
 from telegram.ext import CommandHandler, Application
 from tg_handlers import (
-    create_note_handler, 
     start, 
-    read_note_handler, 
-    edit_note_handler, 
-    delete_note_handler, 
-    display_notes_handler, 
-    display_notes_reverse_handler
+    create_event_handler,
+    get_event_handler,
+    delete_event_handler,
+    list_events_handler,
+    update_event_handler
     )
 
 load_dotenv()
@@ -17,12 +16,11 @@ def main():
     app = Application.builder().token(os.environ.get("TELEGRAM_TOKEN")).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler('create', create_note_handler))
-    app.add_handler(CommandHandler('read', read_note_handler))
-    app.add_handler(CommandHandler('edit', edit_note_handler))
-    app.add_handler(CommandHandler('delete', delete_note_handler))
-    app.add_handler(CommandHandler('display', display_notes_handler))
-    app.add_handler(CommandHandler('display_reverse', display_notes_reverse_handler))
+    app.add_handler(CommandHandler('create_event', create_event_handler))
+    app.add_handler(CommandHandler('get_event', get_event_handler))
+    app.add_handler(CommandHandler('delete_event', delete_event_handler))
+    app.add_handler(CommandHandler('list_events', list_events_handler))
+    app.add_handler(CommandHandler('update_event', update_event_handler))
 
     app.run_polling()
 
