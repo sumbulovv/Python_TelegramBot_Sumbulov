@@ -1,56 +1,80 @@
 import os
 import json
+from db import conn as db
 
 class CalendarTgBot:
     def __init__(self):
-        self.path_events = "events.json"
-        self.events = self.load_events()
-
-    def load_events(self):
-        if os.path.isfile(self.path_events):
-            with open(self.path_events, "r") as f:
-                return json.load(f)
-        return {}
-
-    def save_events(self):
-        with open(self.path_events, "w") as f:
-            json.dump(self.events, f)
+        pass
 
     def create_event(self, name, date, time, details):
-        event_id = len(self.events) + 1
-        event = {
+        with db.conn.cursor() as cursor:
+            cursor.execute("INSERT INTO events (name, date, time, details) VALUES (%s, %s, %s, %s) RETURNING id;", (name, date, time, details))
+            event_id = cursor.fetchone()[0]
+            db.conn.commit()
+            return event_id
+    
+    def get_event(self, event_id):
+        with db.conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM events WHERE id = %s;", (event_id,))
+            row = cursor.fetchone()
+            return self._row_to_event(row) if row else None
+
+    def delete_event(self, event_id):
+        with db.conn.cursor() as cursor:
+            cursor.execute("DELETE FROM events WHERE id = %s;", (event_id,))
+            deleted = cursor.rowcount
+            db.conn.commit()
+
+            return deleted > 0
+    
+    def list_events(self):
+        with db.conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM events ORDER BY id;")
+            return [self._row_to_event(row) for row in cursor.fetchall()]
+    
+    def update_event(self, event_id, name=None, date=None, time=None, details=None):
+        fields = []
+        values = []
+
+        if name is not None:
+            fields.append("name = %s")
+            values.append(name)
+
+        if date is not None:
+            fields.append("date = %s")
+            values.append(date)
+
+        if time is not None:
+            fields.append("time = %s")
+            values.append(time)
+
+        if details is not None:
+            fields.append("details = %s")
+            values.append(details)
+
+        if not fields:
+            return False
+
+        values.append(event_id)
+
+        with db.conn.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE events SET {', '.join(fields)} WHERE id = %s;",
+                values
+            )
+            updated = cursor.rowcount
+            db.conn.commit()
+
+            return updated > 0
+    
+    @staticmethod
+    def _row_to_event(row):
+        event_id, name, date, time, details = row
+        return {
             "id": event_id,
             "name": name,
             "date": date,
             "time": time,
-            "details": details
+            "details": details,
         }
-        self.events[event_id] = event
-        self.save_events()
-        return event_id
-    
-    def get_event(self, event_id):
-        return self.events.get(event_id, None)
-    
-    def delete_event(self, event_id):
-        if event_id in self.events:
-            del self.events[event_id]
-            return True
-        return False
-    
-    def list_events(self):
-        return list(self.events.values())
-    
-    def update_event(self, event_id, name=None, date=None, time=None, details=None):
-        if event_id in self.events:
-            if name:
-                self.events[event_id]["name"] = name
-            if date:
-                self.events[event_id]["date"] = date
-            if time:
-                self.events[event_id]["time"] = time
-            if details:
-                self.events[event_id]["details"] = details
-            return True
-        return False
     

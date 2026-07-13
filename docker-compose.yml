@@ -1,0 +1,23 @@
+version: '3.8'
+services:
+  db:
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: calendar
+      POSTGRES_PASSWORD: calendar
+      POSTGRES_DB: calendar
+    volumes:
+      - calendar-db-data:/var/lib/postgresql/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calendar -d calendar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - calendar
+volumes:
+  calendar-db-data:
+networks:
+  calendar:

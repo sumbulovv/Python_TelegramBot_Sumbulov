@@ -1,4 +1,5 @@
 import os
+import logging
 from dotenv import load_dotenv
 from telegram.ext import CommandHandler, Application
 from tg_handlers import (
@@ -12,7 +13,16 @@ from tg_handlers import (
 
 load_dotenv()
 
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+
+logger = logging.getLogger(__name__)
+
+
 def main():
+    logger.info("Starting Telegram bot")
     app = Application.builder().token(os.environ.get("TELEGRAM_TOKEN")).build()
 
     app.add_handler(CommandHandler("start", start))
