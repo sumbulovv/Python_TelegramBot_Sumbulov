@@ -8,7 +8,8 @@ from tg_handlers import (
     get_event_handler,
     delete_event_handler,
     list_events_handler,
-    update_event_handler
+    update_event_handler,
+    register_user_handler
     )
 
 load_dotenv()
@@ -26,6 +27,7 @@ def main():
     app = Application.builder().token(os.environ.get("TELEGRAM_TOKEN")).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("register", register_user_handler))
     app.add_handler(CommandHandler('create_event', create_event_handler))
     app.add_handler(CommandHandler('get_event', get_event_handler))
     app.add_handler(CommandHandler('delete_event', delete_event_handler))

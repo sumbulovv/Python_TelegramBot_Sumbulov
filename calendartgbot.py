@@ -1,5 +1,3 @@
-import os
-import json
 from db import conn as db
 
 class CalendarTgBot:
@@ -11,6 +9,11 @@ class CalendarTgBot:
             cursor.execute("INSERT INTO users (id, name) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING;", (user_id, name))
             db.conn.commit()
             return cursor.rowcount > 0
+
+    def is_user_registered(self, user_id):
+        with db.conn.cursor() as cursor:
+            cursor.execute("SELECT 1 FROM users WHERE id = %s;", (user_id,))
+            return cursor.fetchone() is not None
 
     def create_event(self, name, date, time, details, user_id):
         with db.conn.cursor() as cursor:
@@ -85,4 +88,3 @@ class CalendarTgBot:
             "details": details,
             "user_id": user_id
         }
-    

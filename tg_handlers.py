@@ -7,6 +7,24 @@ from calendartgbot import CalendarTgBot
 logger = logging.getLogger(__name__)
 
 
+def require_registration(handler):
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        calendar = CalendarTgBot()
+
+        if not calendar.is_user_registered(user_id):
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="Сначала зарегистрируйтесь командой /register."
+            )
+            return
+
+        await handler(update, context)
+
+    return wrapper
+
+
+@require_registration
 async def create_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
@@ -20,7 +38,9 @@ async def create_event_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception:
         logger.exception("Failed to create event")
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
-        
+
+
+@require_registration
 async def get_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
@@ -35,7 +55,9 @@ async def get_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         logger.exception("Failed to get event")
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
-        
+
+
+@require_registration
 async def delete_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
@@ -49,7 +71,9 @@ async def delete_event_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception:
         logger.exception("Failed to delete event")
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
-        
+
+
+@require_registration
 async def list_events_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
@@ -63,7 +87,9 @@ async def list_events_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception:
         logger.exception("Failed to list events")
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
-        
+
+
+@require_registration
 async def update_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
