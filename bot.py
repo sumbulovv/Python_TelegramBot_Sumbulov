@@ -2,6 +2,12 @@ import os
 import logging
 from dotenv import load_dotenv
 from telegram.ext import CommandHandler, Application
+from django_bootstrap import setup_django
+
+setup_django()
+
+from calendar_bot.models import BotStatistics
+from datetime import datetime
 from tg_handlers import (
     start, 
     create_event_handler,
@@ -20,6 +26,8 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+BotStatistics.objects.get_or_create(date=datetime.now().date(), user_count=0, event_count=0, edited_events=0, cancelled_events=0)
 
 
 def main():

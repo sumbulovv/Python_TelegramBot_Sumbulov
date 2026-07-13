@@ -1,10 +1,22 @@
 import logging
+from asgiref.sync import sync_to_async
 from telegram import Update
 from telegram.ext import ContextTypes
-from calendartgbot import CalendarTgBot
+from django_bootstrap import setup_django
 
+setup_django()
+
+from calendartgbot import CalendarTgBot
+from calendar_bot.models import BotStatistics
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+
+def _increment_statistics(field_name):
+    stat, _ = BotStatistics.objects.get_or_create(date=datetime.now().date())
+    setattr(stat, field_name, getattr(stat, field_name) + 1)
+    stat.save()
 
 
 def require_registration(handler):
@@ -34,6 +46,7 @@ async def create_event_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         event_details = " ".join(context.args[3:]) if len(context.args) > 3 else None
         calendar = CalendarTgBot()
         event_id = calendar.create_event(event_name, event_datetime, event_time, event_details, user_id)
+        await sync_to_async(_increment_statistics)("event_count")
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Событие '{event_name}' создано с ID {event_id}.")
     except Exception:
         logger.exception("Failed to create event")
@@ -65,6 +78,7 @@ async def delete_event_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         calendar = CalendarTgBot()
         result = calendar.delete_event(event_id, user_id)
         if result:
+            await sync_to_async(_increment_statistics)("cancelled_events")
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие удалено.")
         else:
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие не найдено.")
@@ -101,6 +115,7 @@ async def update_event_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         calendar = CalendarTgBot()
         result = calendar.update_event(event_id, user_id, name=event_name, date=event_datetime, time=event_time, details=event_details)
         if result:
+            await sync_to_async(_increment_statistics)("edited_events")
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие обновлено.")
         else:
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие не найдено.")
@@ -115,6 +130,7 @@ async def register_user_handler(update: Update, context: ContextTypes.DEFAULT_TY
         calendar = CalendarTgBot()
         result = calendar.register_user(user_id, user_name)
         if result:
+            await sync_to_async(_increment_statistics)("user_count")
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Пользователь зарегистрирован.")
         else:
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Пользователь уже зарегистрирован.")
