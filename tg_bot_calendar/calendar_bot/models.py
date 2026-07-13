@@ -3,12 +3,40 @@ from datetime import datetime, timedelta
 from django.db import models
 
 
+class TelegramUser(models.Model):
+    telegram_id = models.BigIntegerField(unique=True)
+    name = models.CharField(max_length=255, blank=True)
+    events_created = models.PositiveIntegerField(default=0)
+    events_edited = models.PositiveIntegerField(default=0)
+    events_cancelled = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["telegram_id"]
+
+    def __str__(self):
+        return f"{self.name or 'Telegram user'} ({self.telegram_id})"
+
+
 class Event(models.Model):
     name = models.CharField(max_length=255)
     date = models.DateField()
     time = models.TimeField()
     details = models.TextField(blank=True, null=True)
-    user_id = models.IntegerField()
+    user_id = models.BigIntegerField()
+    owner = models.ForeignKey(
+        TelegramUser,
+        on_delete=models.CASCADE,
+        related_name="events",
+    )
+
+    class Meta:
+        ordering = ["date", "time", "id"]
+        indexes = [
+            models.Index(fields=["user_id", "date"], name="calendar_bo_user_id_9c57b4_idx"),
+            models.Index(fields=["owner", "date"], name="calendar_bo_owner_i_ef3c11_idx"),
+        ]
 
     def __str__(self):
         return f"{self.name} on {self.date} at {self.time}"
@@ -32,7 +60,7 @@ class Appointment(models.Model):
         CANCELLED = "cancelled", "Отменено"
 
     event = models.ForeignKey(Event, on_delete=models.CASCADE)
-    user_id = models.IntegerField()
+    user_id = models.BigIntegerField()
     appointment_date = models.DateField()
     appointment_time = models.TimeField()
     duration_minutes = models.PositiveIntegerField(default=60)
@@ -46,7 +74,10 @@ class Appointment(models.Model):
     class Meta:
         ordering = ["appointment_date", "appointment_time"]
         indexes = [
-            models.Index(fields=["user_id", "appointment_date", "status"]),
+            models.Index(
+                fields=["user_id", "appointment_date", "status"],
+                name="calendar_bo_user_id_3d85cf_idx",
+            ),
         ]
 
     @property

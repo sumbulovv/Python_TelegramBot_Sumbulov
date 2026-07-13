@@ -2,7 +2,7 @@ from datetime import date, time
 
 from django.test import TestCase
 
-from .models import Appointment, Event
+from .models import Appointment, Event, TelegramUser
 from .services import (
     AppointmentPermissionError,
     ParticipantBusyError,
@@ -18,12 +18,21 @@ class AppointmentServiceTests(TestCase):
     def setUp(self):
         self.organizer_user_id = 1001
         self.participant_user_id = 2002
+        self.organizer = TelegramUser.objects.create(
+            telegram_id=self.organizer_user_id,
+            name="Organizer",
+        )
+        self.participant = TelegramUser.objects.create(
+            telegram_id=self.participant_user_id,
+            name="Participant",
+        )
         self.event = Event.objects.create(
             name="Planning",
             date=date(2026, 7, 14),
             time=time(10, 0),
             details="Sprint planning",
             user_id=self.organizer_user_id,
+            owner=self.organizer,
         )
 
     def test_invite_user_creates_pending_appointment_when_participant_is_free(self):
@@ -60,6 +69,7 @@ class AppointmentServiceTests(TestCase):
             time=time(10, 30),
             details="Design review",
             user_id=self.organizer_user_id,
+            owner=self.organizer,
         )
 
         with self.assertRaises(ParticipantBusyError):

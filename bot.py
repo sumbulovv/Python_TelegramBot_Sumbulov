@@ -12,12 +12,14 @@ setup_django()
 from calendar_bot.models import BotStatistics
 from tg_handlers import (
     appointment_response_handler,
+    calendar_handler,
     create_event_handler,
     delete_event_handler,
     get_event_handler,
     invite_user_handler,
     list_appointments_handler,
     list_events_handler,
+    login_user_handler,
     register_user_handler,
     start,
     update_event_handler,
@@ -49,6 +51,8 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("register", register_user_handler))
+    app.add_handler(CommandHandler("login", login_user_handler))
+    app.add_handler(CommandHandler("calendar", calendar_handler))
     app.add_handler(CommandHandler("create_event", create_event_handler))
     app.add_handler(CommandHandler("get_event", get_event_handler))
     app.add_handler(CommandHandler("delete_event", delete_event_handler))

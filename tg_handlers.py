@@ -45,7 +45,7 @@ def require_registration(handler):
         if not is_registered:
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="Сначала зарегистрируйтесь командой /register."
+                text="Сначала войдите командой /login <telegram_id> или /register."
             )
             return
 
@@ -175,12 +175,8 @@ async def register_user_handler(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         user_id = update.effective_user.id
         user_name = update.effective_user.username or update.effective_user.first_name
-        calendar = CalendarTgBot()
-        result = await sync_to_async(
-            calendar.register_user,
-            thread_sensitive=True,
-        )(user_id, user_name)
-        if result:
+        created = await _login_telegram_user(user_id, user_name)
+        if created:
             await sync_to_async(_increment_statistics, thread_sensitive=True)("user_count")
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Пользователь зарегистрирован.")
         else:
@@ -189,8 +185,70 @@ async def register_user_handler(update: Update, context: ContextTypes.DEFAULT_TY
         logger.exception("Failed to register user")
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
 
+
+async def login_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        actual_user_id = update.effective_user.id
+        requested_user_id = int(context.args[0]) if context.args else actual_user_id
+
+        if requested_user_id != actual_user_id:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="Можно подключить только свой Telegram ID.",
+            )
+            return
+
+        user_name = update.effective_user.username or update.effective_user.first_name
+        created = await _login_telegram_user(requested_user_id, user_name)
+        if created:
+            await sync_to_async(_increment_statistics, thread_sensitive=True)("user_count")
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"Вход выполнен. Telegram ID {requested_user_id} подключен к учетной записи.",
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"Вы уже вошли с Telegram ID {requested_user_id}.",
+            )
+    except (IndexError, ValueError):
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Проверьте формат команды: /login <telegram_id>",
+        )
+    except Exception:
+        logger.exception("Failed to login user")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
+
+
+async def _login_telegram_user(user_id, user_name):
+    calendar = CalendarTgBot()
+    return await sync_to_async(
+        calendar.login_user,
+        thread_sensitive=True,
+    )(user_id, user_name)
+
+
+@require_registration
+async def calendar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user_id = update.effective_user.id
+        calendar = CalendarTgBot()
+        events = await sync_to_async(
+            calendar.get_user_calendar,
+            thread_sensitive=True,
+        )(user_id)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=_format_user_calendar(events),
+        )
+    except Exception:
+        logger.exception("Failed to show user calendar")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я работаю.")
+    await update.message.reply_text("Привет! Войдите командой /login <telegram_id>, затем откройте календарь через /calendar.")
 
 
 @require_registration
@@ -418,6 +476,25 @@ def _format_appointments_list(appointments, current_user_id):
         appointment_lines.append(f"...и еще {len(appointments) - 30} встреч.")
 
     return "Ваши встречи:\n" + "\n".join(appointment_lines)
+
+
+def _format_user_calendar(events):
+    if not events:
+        return "Ваш календарь пуст."
+
+    event_lines = [
+        (
+            f"ID {event['id']}: {event['name']} | "
+            f"{event['date']} {event['time']} | "
+            f"{event['details'] or '-'}"
+        )
+        for event in events[:50]
+    ]
+
+    if len(events) > 50:
+        event_lines.append(f"...и еще {len(events) - 50} событий.")
+
+    return "Ваш календарь:\n" + "\n".join(event_lines)
 
 
 def _format_appointment_list_item(appointment, current_user_id):

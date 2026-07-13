@@ -2,8 +2,9 @@ import re
 from datetime import date as date_cls
 from datetime import datetime, time as time_cls, timedelta
 
-from db import conn as db
-from calendar_bot.models import Event
+from django.db.models import F
+
+from calendar_bot.models import Event, TelegramUser
 
 
 class CalendarTgBot:
@@ -74,49 +75,65 @@ class CalendarTgBot:
         pass
 
     def register_user(self, user_id, name):
-        with db.conn.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO users (id, name) VALUES (%s, %s) "
-                "ON CONFLICT (id) DO NOTHING;",
-                (user_id, name),
-            )
-            db.conn.commit()
-            return cursor.rowcount > 0
+        user, created = TelegramUser.objects.get_or_create(
+            telegram_id=user_id,
+            defaults={"name": name or ""},
+        )
+        if not created and name and user.name != name:
+            user.name = name
+            user.save(update_fields=["name", "updated_at"])
+
+        return created
+
+    def login_user(self, user_id, name):
+        return self.register_user(user_id, name)
 
     def is_user_registered(self, user_id):
-        with db.conn.cursor() as cursor:
-            cursor.execute("SELECT 1 FROM users WHERE id = %s;", (user_id,))
-            return cursor.fetchone() is not None
+        return TelegramUser.objects.filter(telegram_id=user_id).exists()
 
     def create_event(self, name, date, time, details, user_id):
+        owner = self._get_user(user_id)
         event = Event.objects.create(
             name=name,
             date=self._parse_date(date),
             time=self._parse_time(time),
             details=details,
             user_id=user_id,
+            owner=owner,
         )
+        self._increment_user_metric(owner.telegram_id, "events_created")
         return event.id
 
     def get_event(self, event_id, user_id):
-        event = Event.objects.filter(id=event_id, user_id=user_id).first()
+        event = self._events_for_user(user_id).filter(id=event_id).first()
         return self._event_to_dict(event) if event else None
 
     def delete_event(self, event_id, user_id):
-        deleted, _ = Event.objects.filter(id=event_id, user_id=user_id).delete()
-        return deleted > 0
+        event = self._events_for_user(user_id).filter(id=event_id).first()
+        if not event:
+            return False
 
-    def list_events(self, user_id):
+        event.delete()
+        self._increment_user_metric(user_id, "events_cancelled")
+        return True
+
+    def get_user_events_by_telegram_id(self, telegram_id):
         return [
             self._event_to_dict(event)
-            for event in Event.objects.filter(user_id=user_id).order_by("id")
+            for event in self._events_for_user(telegram_id).order_by("date", "time", "id")
         ]
+
+    def get_user_calendar(self, telegram_id):
+        return self.get_user_events_by_telegram_id(telegram_id)
+
+    def list_events(self, user_id):
+        return self.get_user_events_by_telegram_id(user_id)
 
     def update_event(self, event_id, user_id, name=None, date=None, time=None, details=None):
         if all(value is None for value in (name, date, time, details)):
             return False
 
-        event = Event.objects.filter(id=event_id, user_id=user_id).first()
+        event = self._events_for_user(user_id).filter(id=event_id).first()
         if not event:
             return False
 
@@ -133,7 +150,26 @@ class CalendarTgBot:
             event.details = details
 
         event.save()
+        self._increment_user_metric(user_id, "events_edited")
         return True
+
+    @staticmethod
+    def _get_user(user_id):
+        user, _ = TelegramUser.objects.get_or_create(
+            telegram_id=user_id,
+            defaults={"name": ""},
+        )
+        return user
+
+    @staticmethod
+    def _events_for_user(user_id):
+        return Event.objects.select_related("owner").filter(owner__telegram_id=user_id)
+
+    @staticmethod
+    def _increment_user_metric(user_id, field_name):
+        TelegramUser.objects.filter(telegram_id=user_id).update(
+            **{field_name: F(field_name) + 1}
+        )
 
     @staticmethod
     def _event_to_dict(event):
