@@ -5,34 +5,40 @@ from db import conn as db
 class CalendarTgBot:
     def __init__(self):
         pass
-
-    def create_event(self, name, date, time, details):
+    
+    def register_user(self, user_id, name):
         with db.conn.cursor() as cursor:
-            cursor.execute("INSERT INTO events (name, date, time, details) VALUES (%s, %s, %s, %s) RETURNING id;", (name, date, time, details))
+            cursor.execute("INSERT INTO users (id, name) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING;", (user_id, name))
+            db.conn.commit()
+            return cursor.rowcount > 0
+
+    def create_event(self, name, date, time, details, user_id):
+        with db.conn.cursor() as cursor:
+            cursor.execute("INSERT INTO events (name, date, time, details, user_id) VALUES (%s, %s, %s, %s, %s) RETURNING id;", (name, date, time, details, user_id))
             event_id = cursor.fetchone()[0]
             db.conn.commit()
             return event_id
     
-    def get_event(self, event_id):
+    def get_event(self, event_id, user_id):
         with db.conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM events WHERE id = %s;", (event_id,))
+            cursor.execute("SELECT * FROM events WHERE id = %s AND user_id = %s;", (event_id, user_id))
             row = cursor.fetchone()
             return self._row_to_event(row) if row else None
 
-    def delete_event(self, event_id):
+    def delete_event(self, event_id, user_id):
         with db.conn.cursor() as cursor:
-            cursor.execute("DELETE FROM events WHERE id = %s;", (event_id,))
+            cursor.execute("DELETE FROM events WHERE id = %s AND user_id = %s;", (event_id, user_id))
             deleted = cursor.rowcount
             db.conn.commit()
 
             return deleted > 0
     
-    def list_events(self):
+    def list_events(self, user_id):
         with db.conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM events ORDER BY id;")
+            cursor.execute("SELECT * FROM events WHERE user_id = %s ORDER BY id;", (user_id,))
             return [self._row_to_event(row) for row in cursor.fetchall()]
     
-    def update_event(self, event_id, name=None, date=None, time=None, details=None):
+    def update_event(self, event_id, user_id, name=None, date=None, time=None, details=None):
         fields = []
         values = []
 
@@ -56,10 +62,11 @@ class CalendarTgBot:
             return False
 
         values.append(event_id)
+        values.append(user_id)
 
         with db.conn.cursor() as cursor:
             cursor.execute(
-                f"UPDATE events SET {', '.join(fields)} WHERE id = %s;",
+                f"UPDATE events SET {', '.join(fields)} WHERE id = %s AND user_id = %s;",
                 values
             )
             updated = cursor.rowcount
@@ -69,12 +76,13 @@ class CalendarTgBot:
     
     @staticmethod
     def _row_to_event(row):
-        event_id, name, date, time, details = row
+        event_id, name, date, time, details, user_id = row
         return {
             "id": event_id,
             "name": name,
             "date": date,
             "time": time,
             "details": details,
+            "user_id": user_id
         }
     

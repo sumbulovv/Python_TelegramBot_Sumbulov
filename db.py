@@ -9,17 +9,28 @@ class Database:
             password="calendar"
         )
         self.cursor = self.conn.cursor()
-        self.create_table()
+        self.create_table_events()
+        self.create_table_users()
 
-    def create_table(self):
+    def create_table_events(self):
         self.cursor.execute("""
-        CREATE TABLE IF NOT EXISTS events (
-            id serial PRIMARY KEY,
-            name text NOT NULL,
-            date date NOT NULL,
-            time time NOT NULL,
-            details text
-        );
+            CREATE TABLE IF NOT EXISTS events (
+                id serial PRIMARY KEY,
+                name text NOT NULL,
+                date date NOT NULL,
+                time time NOT NULL,
+                details text,
+                user_id bigint NOT NULL
+            );
+        """)
+        self.conn.commit()
+        
+    def create_table_users(self):
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id serial PRIMARY KEY,
+                name text NOT NULL
+            );
         """)
         self.conn.commit()
 
