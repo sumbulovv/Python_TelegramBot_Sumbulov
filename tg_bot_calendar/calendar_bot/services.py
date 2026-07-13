@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from django.db import transaction
+from django.db.models import Q
 
 from .models import Appointment, Event
 
@@ -9,6 +10,24 @@ BUSY_APPOINTMENT_STATUSES = (
     Appointment.Status.PENDING,
     Appointment.Status.CONFIRMED,
 )
+APPOINTMENT_STATUS_ALIASES = {
+    "pending": Appointment.Status.PENDING,
+    "ожидание": Appointment.Status.PENDING,
+    "ожидает": Appointment.Status.PENDING,
+    "confirmed": Appointment.Status.CONFIRMED,
+    "confirm": Appointment.Status.CONFIRMED,
+    "подтверждено": Appointment.Status.CONFIRMED,
+    "подтвержден": Appointment.Status.CONFIRMED,
+    "cancelled": Appointment.Status.CANCELLED,
+    "canceled": Appointment.Status.CANCELLED,
+    "cancel": Appointment.Status.CANCELLED,
+    "declined": Appointment.Status.CANCELLED,
+    "decline": Appointment.Status.CANCELLED,
+    "отменено": Appointment.Status.CANCELLED,
+    "отменен": Appointment.Status.CANCELLED,
+    "отклонено": Appointment.Status.CANCELLED,
+    "отклонен": Appointment.Status.CANCELLED,
+}
 
 
 class AppointmentError(Exception):
@@ -148,6 +167,44 @@ def respond_to_appointment(appointment_id, participant_user_id, status):
 
 def get_appointment_details(appointment_id):
     appointment = Appointment.objects.select_related("event").get(id=appointment_id)
+    return _appointment_to_details(appointment)
+
+
+def get_user_appointment_details(appointment_id, user_id):
+    try:
+        appointment = Appointment.objects.select_related("event").get(id=appointment_id)
+    except Appointment.DoesNotExist as exc:
+        raise AppointmentNotFoundError("Appointment was not found.") from exc
+
+    if appointment.user_id != user_id and appointment.event.user_id != user_id:
+        raise AppointmentPermissionError("Appointment is not available for this user.")
+
+    return _appointment_to_details(appointment)
+
+
+def list_user_appointments(user_id, status=None):
+    appointments = Appointment.objects.select_related("event").filter(
+        Q(user_id=user_id) | Q(event__user_id=user_id)
+    )
+
+    if status:
+        appointments = appointments.filter(status=normalize_appointment_status(status))
+
+    return [_appointment_to_details(appointment) for appointment in appointments]
+
+
+def normalize_appointment_status(status):
+    if not status:
+        return None
+
+    normalized = str(status).strip().lower().replace("ё", "е")
+    if normalized in APPOINTMENT_STATUS_ALIASES:
+        return APPOINTMENT_STATUS_ALIASES[normalized]
+
+    return Appointment.Status(normalized)
+
+
+def _appointment_to_details(appointment):
     return {
         "appointment_id": appointment.id,
         "event_id": appointment.event_id,

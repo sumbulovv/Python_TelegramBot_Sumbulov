@@ -18,7 +18,9 @@ from calendar_bot.services import (
     EventNotFoundError,
     ParticipantBusyError,
     get_appointment_details,
+    get_user_appointment_details,
     invite_user_to_event,
+    list_user_appointments,
     respond_to_appointment,
 )
 
@@ -316,6 +318,62 @@ async def appointment_response_handler(update: Update, context: ContextTypes.DEF
         await query.edit_message_text(text="Что-то пошло не так. Попробуйте еще раз.")
 
 
+@require_registration
+async def list_appointments_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user_id = update.effective_user.id
+
+        if context.args and context.args[0].isdigit():
+            appointment = await sync_to_async(
+                get_user_appointment_details,
+                thread_sensitive=True,
+            )(int(context.args[0]), user_id)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=_format_appointment_details(appointment, user_id),
+            )
+            return
+
+        status = context.args[0] if context.args else None
+        appointments = await sync_to_async(
+            list_user_appointments,
+            thread_sensitive=True,
+        )(user_id, status=status)
+
+        if not appointments:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="Встречи не найдены.",
+            )
+            return
+
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=_format_appointments_list(appointments, user_id),
+        )
+    except AppointmentNotFoundError:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Встреча не найдена.",
+        )
+    except AppointmentPermissionError:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Эта встреча недоступна вашему пользователю.",
+        )
+    except ValueError:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=(
+                "Проверьте команду: /appointments [id|pending|confirmed|cancelled]\n"
+                "Также можно: ожидание, подтверждено, отменено."
+            ),
+        )
+    except Exception:
+        logger.exception("Failed to list appointments")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
+
+
 def _format_appointment_invitation(appointment):
     return (
         "Вас пригласили на встречу.\n"
@@ -348,6 +406,50 @@ def _format_busy_intervals(busy_intervals):
         f"{interval['event_name']}: {interval['start']} - {interval['end']} ({interval['status']})"
         for interval in busy_intervals
     )
+
+
+def _format_appointments_list(appointments, current_user_id):
+    appointment_lines = [
+        _format_appointment_list_item(appointment, current_user_id)
+        for appointment in appointments[:30]
+    ]
+
+    if len(appointments) > 30:
+        appointment_lines.append(f"...и еще {len(appointments) - 30} встреч.")
+
+    return "Ваши встречи:\n" + "\n".join(appointment_lines)
+
+
+def _format_appointment_list_item(appointment, current_user_id):
+    role = _appointment_role(appointment, current_user_id)
+    return (
+        f"ID {appointment['appointment_id']}: {appointment['event_name']} | "
+        f"{appointment['date']} {appointment['time']} | "
+        f"{appointment['status_display']} | {role}"
+    )
+
+
+def _format_appointment_details(appointment, current_user_id):
+    return (
+        f"Встреча ID {appointment['appointment_id']}\n"
+        f"Событие: {appointment['event_name']}\n"
+        f"Event ID: {appointment['event_id']}\n"
+        f"Дата: {appointment['date']}\n"
+        f"Время: {appointment['time']}\n"
+        f"Длительность: {appointment['duration_minutes']} мин.\n"
+        f"Статус: {appointment['status_display']}\n"
+        f"Организатор: {appointment['organizer_user_id']}\n"
+        f"Участник: {appointment['participant_user_id']}\n"
+        f"Ваша роль: {_appointment_role(appointment, current_user_id)}\n"
+        f"Детали: {appointment['details'] or '-'}"
+    )
+
+
+def _appointment_role(appointment, current_user_id):
+    if appointment["organizer_user_id"] == current_user_id:
+        return "организатор"
+
+    return "участник"
 
 
 def _parse_create_event_args(args):

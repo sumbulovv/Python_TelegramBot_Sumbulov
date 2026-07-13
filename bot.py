@@ -16,6 +16,7 @@ from tg_handlers import (
     delete_event_handler,
     get_event_handler,
     invite_user_handler,
+    list_appointments_handler,
     list_events_handler,
     register_user_handler,
     start,
@@ -54,6 +55,8 @@ def main():
     app.add_handler(CommandHandler("list_events", list_events_handler))
     app.add_handler(CommandHandler("update_event", update_event_handler))
     app.add_handler(CommandHandler("invite_user", invite_user_handler))
+    app.add_handler(CommandHandler("appointments", list_appointments_handler))
+    app.add_handler(CommandHandler("list_appointments", list_appointments_handler))
     app.add_handler(
         CallbackQueryHandler(
             appointment_response_handler,

@@ -4,9 +4,12 @@ from django.test import TestCase
 
 from .models import Appointment, Event
 from .services import (
+    AppointmentPermissionError,
     ParticipantBusyError,
+    get_user_appointment_details,
     get_user_busy_intervals,
     invite_user_to_event,
+    list_user_appointments,
     respond_to_appointment,
 )
 
@@ -81,3 +84,26 @@ class AppointmentServiceTests(TestCase):
 
         appointment.refresh_from_db()
         self.assertEqual(appointment.status, Appointment.Status.CONFIRMED)
+
+    def test_user_can_list_related_appointments(self):
+        appointment = invite_user_to_event(
+            self.event.id,
+            self.organizer_user_id,
+            self.participant_user_id,
+        )
+
+        participant_appointments = list_user_appointments(self.participant_user_id)
+        organizer_appointments = list_user_appointments(self.organizer_user_id)
+
+        self.assertEqual(participant_appointments[0]["appointment_id"], appointment.id)
+        self.assertEqual(organizer_appointments[0]["appointment_id"], appointment.id)
+
+    def test_user_cannot_get_unrelated_appointment_details(self):
+        appointment = invite_user_to_event(
+            self.event.id,
+            self.organizer_user_id,
+            self.participant_user_id,
+        )
+
+        with self.assertRaises(AppointmentPermissionError):
+            get_user_appointment_details(appointment.id, user_id=3003)
