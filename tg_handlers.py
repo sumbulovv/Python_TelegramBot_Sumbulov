@@ -731,10 +731,7 @@ def _build_event_export_buttons(user_id):
 
 
 def _build_event_export_url(user_id, export_format):
-    base_url = os.environ.get(
-        "CALENDAR_EXPORT_BASE_URL",
-        "http://localhost:8000",
-    ).rstrip("/")
+    base_url = os.environ["CALENDAR_EXPORT_BASE_URL"].rstrip("/")
     query = urlencode(
         {
             "token": create_event_export_token(user_id),
