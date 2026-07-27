@@ -24,6 +24,7 @@ class Event(models.Model):
     date = models.DateField()
     time = models.TimeField()
     details = models.TextField(blank=True, null=True)
+    is_public = models.BooleanField(default=False)
     user_id = models.BigIntegerField()
     owner = models.ForeignKey(
         TelegramUser,
@@ -36,6 +37,10 @@ class Event(models.Model):
         indexes = [
             models.Index(fields=["user_id", "date"], name="calendar_bo_user_id_9c57b4_idx"),
             models.Index(fields=["owner", "date"], name="calendar_bo_owner_i_ef3c11_idx"),
+            models.Index(
+                fields=["owner", "is_public", "date"],
+                name="calendar_bo_owner_i_2f7a42_idx",
+            ),
         ]
 
     def __str__(self):

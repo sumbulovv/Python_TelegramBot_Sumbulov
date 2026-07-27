@@ -9,8 +9,10 @@ from .services import (
     get_user_appointment_details,
     get_user_busy_intervals,
     invite_user_to_event,
+    list_public_events_by_telegram_id,
     list_user_appointments,
     respond_to_appointment,
+    set_event_public,
 )
 
 
@@ -117,3 +119,58 @@ class AppointmentServiceTests(TestCase):
 
         with self.assertRaises(AppointmentPermissionError):
             get_user_appointment_details(appointment.id, user_id=3003)
+
+
+class PublicEventTests(TestCase):
+    def setUp(self):
+        self.owner_user_id = 1001
+        self.viewer_user_id = 2002
+        self.owner = TelegramUser.objects.create(
+            telegram_id=self.owner_user_id,
+            name="Owner",
+        )
+        self.viewer = TelegramUser.objects.create(
+            telegram_id=self.viewer_user_id,
+            name="Viewer",
+        )
+        self.public_event = Event.objects.create(
+            name="Open demo",
+            date=date(2026, 7, 27),
+            time=time(12, 0),
+            details="Public event",
+            is_public=True,
+            user_id=self.owner_user_id,
+            owner=self.owner,
+        )
+        self.private_event = Event.objects.create(
+            name="Private planning",
+            date=date(2026, 7, 28),
+            time=time(14, 0),
+            details="Private event",
+            user_id=self.owner_user_id,
+            owner=self.owner,
+        )
+
+    def test_public_flag_is_saved_on_event(self):
+        self.assertTrue(self.public_event.is_public)
+        self.assertFalse(self.private_event.is_public)
+
+    def test_public_events_can_be_loaded_by_owner_telegram_id(self):
+        public_events = list_public_events_by_telegram_id(self.owner_user_id)
+
+        self.assertEqual(len(public_events), 1)
+        self.assertEqual(public_events[0]["id"], self.public_event.id)
+
+    def test_owner_can_publish_private_event(self):
+        event = set_event_public(self.private_event.id, self.owner_user_id, True)
+
+        self.private_event.refresh_from_db()
+        self.assertIsNotNone(event)
+        self.assertTrue(self.private_event.is_public)
+
+    def test_other_user_cannot_publish_event(self):
+        event = set_event_public(self.private_event.id, self.viewer_user_id, True)
+
+        self.private_event.refresh_from_db()
+        self.assertIsNone(event)
+        self.assertFalse(self.private_event.is_public)

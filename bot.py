@@ -20,8 +20,12 @@ from tg_handlers import (
     list_appointments_handler,
     list_events_handler,
     login_user_handler,
+    public_event_callback_handler,
     register_user_handler,
+    shared_events_handler,
+    share_event_handler,
     start,
+    unshare_event_handler,
     update_event_handler,
 )
 
@@ -58,9 +62,18 @@ def main():
     app.add_handler(CommandHandler("delete_event", delete_event_handler))
     app.add_handler(CommandHandler("list_events", list_events_handler))
     app.add_handler(CommandHandler("update_event", update_event_handler))
+    app.add_handler(CommandHandler("share_event", share_event_handler))
+    app.add_handler(CommandHandler("unshare_event", unshare_event_handler))
+    app.add_handler(CommandHandler("shared_events", shared_events_handler))
     app.add_handler(CommandHandler("invite_user", invite_user_handler))
     app.add_handler(CommandHandler("appointments", list_appointments_handler))
     app.add_handler(CommandHandler("list_appointments", list_appointments_handler))
+    app.add_handler(
+        CallbackQueryHandler(
+            public_event_callback_handler,
+            pattern=r"^event_public:toggle:\d+$",
+        )
+    )
     app.add_handler(
         CallbackQueryHandler(
             appointment_response_handler,

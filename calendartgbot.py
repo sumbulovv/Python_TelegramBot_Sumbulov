@@ -5,6 +5,11 @@ from datetime import datetime, time as time_cls, timedelta
 from django.db.models import F
 
 from calendar_bot.models import Event, TelegramUser
+from calendar_bot.services import (
+    list_public_events_by_telegram_id as list_public_events_by_telegram_id_service,
+    set_event_public as set_event_public_service,
+    toggle_event_public as toggle_event_public_service,
+)
 
 
 class CalendarTgBot:
@@ -129,6 +134,21 @@ class CalendarTgBot:
     def list_events(self, user_id):
         return self.get_user_events_by_telegram_id(user_id)
 
+    def list_public_events_by_telegram_id(self, telegram_id):
+        return list_public_events_by_telegram_id_service(telegram_id)
+
+    def set_event_public(self, event_id, user_id, is_public=True):
+        return set_event_public_service(event_id, user_id, is_public)
+
+    def share_event(self, event_id, user_id):
+        return self.set_event_public(event_id, user_id, True)
+
+    def unshare_event(self, event_id, user_id):
+        return self.set_event_public(event_id, user_id, False)
+
+    def toggle_event_public(self, event_id, user_id):
+        return toggle_event_public_service(event_id, user_id)
+
     def update_event(self, event_id, user_id, name=None, date=None, time=None, details=None):
         if all(value is None for value in (name, date, time, details)):
             return False
@@ -180,6 +200,7 @@ class CalendarTgBot:
             "time": event.time,
             "details": event.details,
             "user_id": event.user_id,
+            "is_public": event.is_public,
         }
 
     @staticmethod

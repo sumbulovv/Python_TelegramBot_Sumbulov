@@ -93,7 +93,7 @@ async def get_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             thread_sensitive=True,
         )(event_id, user_id)
         if event:
-            text_event = f"ID: {event['id']}, Name: {event['name']}, Date: {event['date']}, Time: {event['time']}, Details: {event['details']}, User ID: {event['user_id']}"
+            text_event = _format_event_line(event)
             await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Событие: {text_event}")
         else:
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие не найдено.")
@@ -132,8 +132,12 @@ async def list_events_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             thread_sensitive=True,
         )(user_id)
         if events:
-            events_text = "\n".join([f"ID: {event['id']}, Name: {event['name']}, Date: {event['date']}, Time: {event['time']}, Details: {event['details']}, User ID: {event['user_id']}" for event in events])
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Список событий:\n{events_text}")
+            events_text = "\n".join([_format_event_line(event) for event in events])
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"Список событий:\n{events_text}",
+                reply_markup=_build_event_sharing_keyboard(events),
+            )
         else:
             await context.bot.send_message(chat_id=update.effective_chat.id, text="События не найдены.")
     except Exception:
@@ -233,14 +237,28 @@ async def _login_telegram_user(user_id, user_name):
 async def calendar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
+        shared_user_id = int(context.args[0]) if context.args else None
         calendar = CalendarTgBot()
         events = await sync_to_async(
             calendar.get_user_calendar,
             thread_sensitive=True,
         )(user_id)
+        shared_events = []
+        if shared_user_id is not None:
+            shared_events = await sync_to_async(
+                calendar.list_public_events_by_telegram_id,
+                thread_sensitive=True,
+            )(shared_user_id)
+
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=_format_user_calendar(events),
+            text=_format_user_calendar(events, shared_events, shared_user_id),
+            reply_markup=_build_event_sharing_keyboard(events) if events else None,
+        )
+    except ValueError:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Проверьте формат команды: /calendar [telegram_id]",
         )
     except Exception:
         logger.exception("Failed to show user calendar")
@@ -249,6 +267,85 @@ async def calendar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Войдите командой /login <telegram_id>, затем откройте календарь через /calendar.")
+
+
+@require_registration
+async def share_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _set_event_public_from_command(update, context, is_public=True)
+
+
+@require_registration
+async def unshare_event_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _set_event_public_from_command(update, context, is_public=False)
+
+
+@require_registration
+async def shared_events_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if not context.args:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="Использование: /shared_events <telegram_id>",
+            )
+            return
+
+        shared_user_id = int(context.args[0])
+        calendar = CalendarTgBot()
+        shared_events = await sync_to_async(
+            calendar.list_public_events_by_telegram_id,
+            thread_sensitive=True,
+        )(shared_user_id)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=_format_shared_events(shared_events, shared_user_id),
+        )
+    except ValueError:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Проверьте формат команды: /shared_events <telegram_id>",
+        )
+    except Exception:
+        logger.exception("Failed to show shared events")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
+
+
+async def _set_event_public_from_command(update, context, is_public):
+    try:
+        if not context.args:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=(
+                    "Использование: /share_event <event_id>"
+                    if is_public
+                    else "Использование: /unshare_event <event_id>"
+                ),
+            )
+            return
+
+        user_id = update.effective_user.id
+        event_id = int(context.args[0])
+        calendar = CalendarTgBot()
+        event = await sync_to_async(
+            calendar.set_event_public,
+            thread_sensitive=True,
+        )(event_id, user_id, is_public)
+        if not event:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="Событие не найдено.")
+            return
+
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=_format_event_public_update(event),
+        )
+    except ValueError:
+        command = "/share_event <event_id>" if is_public else "/unshare_event <event_id>"
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"Проверьте формат команды: {command}",
+        )
+    except Exception:
+        logger.exception("Failed to update event public flag")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
 
 
 @require_registration
@@ -376,6 +473,48 @@ async def appointment_response_handler(update: Update, context: ContextTypes.DEF
         await query.edit_message_text(text="Что-то пошло не так. Попробуйте еще раз.")
 
 
+async def public_event_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        _, action, event_id = query.data.split(":")
+        if action != "toggle":
+            raise ValueError("Unsupported public event action.")
+
+        user_id = update.effective_user.id
+        calendar = CalendarTgBot()
+        is_registered = await sync_to_async(
+            calendar.is_user_registered,
+            thread_sensitive=True,
+        )(user_id)
+        if not is_registered:
+            await query.edit_message_text(text="Сначала войдите командой /login <telegram_id> или /register.")
+            return
+
+        event = await sync_to_async(
+            calendar.toggle_event_public,
+            thread_sensitive=True,
+        )(int(event_id), user_id)
+        if not event:
+            await query.edit_message_text(text="Событие не найдено.")
+            return
+
+        events = await sync_to_async(
+            calendar.get_user_calendar,
+            thread_sensitive=True,
+        )(user_id)
+        await query.edit_message_text(
+            text=_format_user_calendar(events),
+            reply_markup=_build_event_sharing_keyboard(events) if events else None,
+        )
+    except (IndexError, ValueError):
+        await query.edit_message_text(text="Не удалось изменить доступность события.")
+    except Exception:
+        logger.exception("Failed to process public event callback")
+        await query.edit_message_text(text="Что-то пошло не так. Попробуйте еще раз.")
+
+
 @require_registration
 async def list_appointments_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -478,23 +617,75 @@ def _format_appointments_list(appointments, current_user_id):
     return "Ваши встречи:\n" + "\n".join(appointment_lines)
 
 
-def _format_user_calendar(events):
+def _format_user_calendar(events, shared_events=None, shared_user_id=None):
+    shared_events = shared_events or []
+    sections = []
+
+    if events:
+        sections.append("Ваш календарь:\n" + _format_events_block(events))
+    else:
+        sections.append("Ваш календарь пуст.")
+
+    if shared_user_id is not None:
+        sections.append(_format_shared_events(shared_events, shared_user_id))
+
+    return "\n\n".join(sections)
+
+
+def _format_shared_events(events, shared_user_id):
     if not events:
-        return "Ваш календарь пуст."
+        return f"Общие события пользователя {shared_user_id}:\nСобытия не найдены."
 
-    event_lines = [
-        (
-            f"ID {event['id']}: {event['name']} | "
-            f"{event['date']} {event['time']} | "
-            f"{event['details'] or '-'}"
+    return f"Общие события пользователя {shared_user_id}:\n" + _format_events_block(events)
+
+
+def _format_events_block(events, limit=50):
+    event_lines = [_format_event_line(event) for event in events[:limit]]
+
+    if len(events) > limit:
+        event_lines.append(f"...и еще {len(events) - limit} событий.")
+
+    return "\n".join(event_lines)
+
+
+def _format_event_line(event):
+    return (
+        f"ID {event['id']}: {event['name']} | "
+        f"{event['date']} {event['time']} | "
+        f"{event['details'] or '-'} | "
+        f"{_format_event_public_status(event)}"
+    )
+
+
+def _format_event_public_status(event):
+    return "публичное" if event.get("is_public") else "личное"
+
+
+def _format_event_public_update(event):
+    if event.get("is_public"):
+        return f"Событие ID {event['id']} опубликовано и доступно другим пользователям."
+
+    return f"Событие ID {event['id']} скрыто из общих событий."
+
+
+def _build_event_sharing_keyboard(events):
+    buttons = []
+    for event in events[:20]:
+        button_text = (
+            f"Скрыть ID {event['id']}"
+            if event.get("is_public")
+            else f"Опубликовать ID {event['id']}"
         )
-        for event in events[:50]
-    ]
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    button_text,
+                    callback_data=f"event_public:toggle:{event['id']}",
+                )
+            ]
+        )
 
-    if len(events) > 50:
-        event_lines.append(f"...и еще {len(events) - 50} событий.")
-
-    return "Ваш календарь:\n" + "\n".join(event_lines)
+    return InlineKeyboardMarkup(buttons) if buttons else None
 
 
 def _format_appointment_list_item(appointment, current_user_id):

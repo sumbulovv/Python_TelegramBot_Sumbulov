@@ -52,6 +52,40 @@ class AppointmentPermissionError(AppointmentError):
     pass
 
 
+def list_public_events_by_telegram_id(telegram_id):
+    events = Event.objects.select_related("owner").filter(
+        owner__telegram_id=telegram_id,
+        is_public=True,
+    )
+    return [_event_to_details(event) for event in events]
+
+
+def set_event_public(event_id, owner_user_id, is_public=True):
+    event = Event.objects.select_related("owner").filter(
+        id=event_id,
+        owner__telegram_id=owner_user_id,
+    ).first()
+    if not event:
+        return None
+
+    event.is_public = is_public
+    event.save(update_fields=["is_public"])
+    return _event_to_details(event)
+
+
+def toggle_event_public(event_id, owner_user_id):
+    event = Event.objects.select_related("owner").filter(
+        id=event_id,
+        owner__telegram_id=owner_user_id,
+    ).first()
+    if not event:
+        return None
+
+    event.is_public = not event.is_public
+    event.save(update_fields=["is_public"])
+    return _event_to_details(event)
+
+
 def get_user_busy_intervals(user_id, appointment_date=None, statuses=None):
     statuses = statuses or BUSY_APPOINTMENT_STATUSES
     appointments = Appointment.objects.select_related("event").filter(
@@ -217,6 +251,18 @@ def _appointment_to_details(appointment):
         "details": appointment.details,
         "status": appointment.status,
         "status_display": appointment.get_status_display(),
+    }
+
+
+def _event_to_details(event):
+    return {
+        "id": event.id,
+        "name": event.name,
+        "date": event.date,
+        "time": event.time,
+        "details": event.details,
+        "user_id": event.user_id,
+        "is_public": event.is_public,
     }
 
 

@@ -8,7 +8,7 @@ from .models import Appointment, BotStatistics, Event, TelegramUser
 
 class EventInline(admin.TabularInline):
     model = Event
-    fields = ("id", "name", "date", "time", "details")
+    fields = ("id", "name", "date", "time", "details", "is_public")
     readonly_fields = ("id",)
     extra = 0
 
@@ -58,8 +58,8 @@ class TelegramUserAdmin(admin.ModelAdmin):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "date", "time", "owner", "user_id")
-    list_filter = ("date", "owner")
+    list_display = ("id", "name", "date", "time", "owner", "user_id", "is_public")
+    list_filter = ("date", "owner", "is_public")
     search_fields = ("name", "details", "=user_id", "owner__name", "=owner__telegram_id")
     autocomplete_fields = ("owner",)
 
