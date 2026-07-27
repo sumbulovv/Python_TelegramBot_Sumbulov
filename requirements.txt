@@ -2,3 +2,4 @@ python-telegram-bot
 dotenv
 psycopg2-binary
 Django
+djangorestframework

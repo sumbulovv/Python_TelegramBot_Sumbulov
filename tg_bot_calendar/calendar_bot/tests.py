@@ -2,6 +2,7 @@ import json
 from datetime import date, time
 
 from django.test import TestCase
+from rest_framework import status
 
 from .models import Appointment, Event, TelegramUser
 from .services import (
@@ -257,3 +258,52 @@ class EventExportTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+
+class CalendarApiTests(TestCase):
+    def setUp(self):
+        self.owner_user_id = 1001
+        self.owner = TelegramUser.objects.create(
+            telegram_id=self.owner_user_id,
+            name="API Owner",
+        )
+        self.event = Event.objects.create(
+            name="API demo",
+            date=date(2026, 7, 27),
+            time=time(9, 30),
+            details="Browsable API event",
+            is_public=True,
+            user_id=self.owner_user_id,
+            owner=self.owner,
+        )
+
+    def test_api_lists_events_as_json(self):
+        response = self.client.get("/api/events/", HTTP_ACCEPT="application/json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()[0]["id"], self.event.id)
+        self.assertEqual(response.json()[0]["owner_telegram_id"], self.owner_user_id)
+
+    def test_api_creates_event_and_syncs_user_id_from_owner(self):
+        response = self.client.post(
+            "/api/events/",
+            data={
+                "name": "Created through API",
+                "date": "2026-07-28",
+                "time": "11:00:00",
+                "details": "Created by integration",
+                "is_public": False,
+                "owner": self.owner.id,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_event = Event.objects.get(id=response.json()["id"])
+        self.assertEqual(created_event.user_id, self.owner_user_id)
+
+    def test_browsable_api_root_is_available(self):
+        response = self.client.get("/api/", HTTP_ACCEPT="text/html")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("text/html", response["Content-Type"])
