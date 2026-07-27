@@ -1,5 +1,7 @@
 import logging
+import os
 from datetime import datetime
+from urllib.parse import urlencode
 
 from asgiref.sync import sync_to_async
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -17,6 +19,7 @@ from calendar_bot.services import (
     AppointmentPermissionError,
     EventNotFoundError,
     ParticipantBusyError,
+    create_event_export_token,
     get_appointment_details,
     get_user_appointment_details,
     invite_user_to_event,
@@ -136,10 +139,14 @@ async def list_events_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=f"Список событий:\n{events_text}",
-                reply_markup=_build_event_sharing_keyboard(events),
+                reply_markup=_build_event_sharing_keyboard(events, user_id),
             )
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="События не найдены.")
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="События не найдены.",
+                reply_markup=_build_event_export_keyboard(user_id),
+            )
     except Exception:
         logger.exception("Failed to list events")
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Что-то пошло не так. Попробуйте еще раз.")
@@ -253,7 +260,7 @@ async def calendar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=_format_user_calendar(events, shared_events, shared_user_id),
-            reply_markup=_build_event_sharing_keyboard(events) if events else None,
+            reply_markup=_build_event_sharing_keyboard(events, user_id),
         )
     except ValueError:
         await context.bot.send_message(
@@ -266,7 +273,20 @@ async def calendar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Войдите командой /login <telegram_id>, затем откройте календарь через /calendar.")
+    await update.message.reply_text(
+        "Привет! Войдите командой /login <telegram_id>, затем откройте календарь "
+        "через /calendar. Для выгрузки событий используйте /export_events."
+    )
+
+
+@require_registration
+async def export_events_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="Выберите формат выгрузки ваших событий. Ссылки действуют 24 часа.",
+        reply_markup=_build_event_export_keyboard(user_id),
+    )
 
 
 @require_registration
@@ -506,7 +526,7 @@ async def public_event_callback_handler(update: Update, context: ContextTypes.DE
         )(user_id)
         await query.edit_message_text(
             text=_format_user_calendar(events),
-            reply_markup=_build_event_sharing_keyboard(events) if events else None,
+            reply_markup=_build_event_sharing_keyboard(events, user_id),
         )
     except (IndexError, ValueError):
         await query.edit_message_text(text="Не удалось изменить доступность события.")
@@ -668,7 +688,7 @@ def _format_event_public_update(event):
     return f"Событие ID {event['id']} скрыто из общих событий."
 
 
-def _build_event_sharing_keyboard(events):
+def _build_event_sharing_keyboard(events, user_id=None):
     buttons = []
     for event in events[:20]:
         button_text = (
@@ -685,7 +705,43 @@ def _build_event_sharing_keyboard(events):
             ]
         )
 
+    if user_id is not None:
+        buttons.extend(_build_event_export_buttons(user_id))
+
     return InlineKeyboardMarkup(buttons) if buttons else None
+
+
+def _build_event_export_keyboard(user_id):
+    return InlineKeyboardMarkup(_build_event_export_buttons(user_id))
+
+
+def _build_event_export_buttons(user_id):
+    return [
+        [
+            InlineKeyboardButton(
+                "Скачать JSON",
+                url=_build_event_export_url(user_id, "json"),
+            ),
+            InlineKeyboardButton(
+                "Скачать CSV",
+                url=_build_event_export_url(user_id, "csv"),
+            ),
+        ]
+    ]
+
+
+def _build_event_export_url(user_id, export_format):
+    base_url = os.environ.get(
+        "CALENDAR_EXPORT_BASE_URL",
+        "http://localhost:8000",
+    ).rstrip("/")
+    query = urlencode(
+        {
+            "token": create_event_export_token(user_id),
+            "format": export_format,
+        }
+    )
+    return f"{base_url}/events/export/?{query}"
 
 
 def _format_appointment_list_item(appointment, current_user_id):

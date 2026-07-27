@@ -1,5 +1,9 @@
+import csv
+import json
 from datetime import datetime, timedelta
+from io import StringIO
 
+from django.core import signing
 from django.db import transaction
 from django.db.models import Q
 
@@ -28,6 +32,16 @@ APPOINTMENT_STATUS_ALIASES = {
     "отклонено": Appointment.Status.CANCELLED,
     "отклонен": Appointment.Status.CANCELLED,
 }
+EVENT_EXPORT_TOKEN_SALT = "calendar_bot.event_export"
+EVENT_EXPORT_FIELDS = (
+    "id",
+    "name",
+    "date",
+    "time",
+    "details",
+    "is_public",
+    "owner_telegram_id",
+)
 
 
 class AppointmentError(Exception):
@@ -50,6 +64,56 @@ class ParticipantBusyError(AppointmentError):
 
 class AppointmentPermissionError(AppointmentError):
     pass
+
+
+def create_event_export_token(telegram_id):
+    return signing.dumps(
+        {"telegram_id": int(telegram_id)},
+        salt=EVENT_EXPORT_TOKEN_SALT,
+    )
+
+
+def parse_event_export_token(token, max_age=None):
+    payload = signing.loads(
+        token,
+        salt=EVENT_EXPORT_TOKEN_SALT,
+        max_age=max_age,
+    )
+    return int(payload["telegram_id"])
+
+
+def export_user_events(telegram_id, export_format="json"):
+    normalized_format = str(export_format or "json").strip().lower()
+    events = [
+        _event_to_export_row(event)
+        for event in Event.objects.select_related("owner").filter(
+            owner__telegram_id=telegram_id,
+        )
+    ]
+
+    if normalized_format == "json":
+        return {
+            "content": json.dumps(
+                {"events": events},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            "content_type": "application/json; charset=utf-8",
+            "filename": f"events_{telegram_id}.json",
+        }
+
+    if normalized_format == "csv":
+        output = StringIO()
+        writer = csv.DictWriter(output, fieldnames=EVENT_EXPORT_FIELDS)
+        writer.writeheader()
+        writer.writerows(events)
+        return {
+            "content": output.getvalue(),
+            "content_type": "text/csv; charset=utf-8",
+            "filename": f"events_{telegram_id}.csv",
+        }
+
+    raise ValueError("Unsupported export format. Use json or csv.")
 
 
 def list_public_events_by_telegram_id(telegram_id):
@@ -263,6 +327,18 @@ def _event_to_details(event):
         "details": event.details,
         "user_id": event.user_id,
         "is_public": event.is_public,
+    }
+
+
+def _event_to_export_row(event):
+    return {
+        "id": event.id,
+        "name": event.name,
+        "date": event.date.isoformat(),
+        "time": event.time.isoformat(),
+        "details": event.details or "",
+        "is_public": event.is_public,
+        "owner_telegram_id": event.owner.telegram_id,
     }
 
 

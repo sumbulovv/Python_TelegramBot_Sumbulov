@@ -15,6 +15,7 @@ from tg_handlers import (
     calendar_handler,
     create_event_handler,
     delete_event_handler,
+    export_events_handler,
     get_event_handler,
     invite_user_handler,
     list_appointments_handler,
@@ -61,6 +62,7 @@ def main():
     app.add_handler(CommandHandler("get_event", get_event_handler))
     app.add_handler(CommandHandler("delete_event", delete_event_handler))
     app.add_handler(CommandHandler("list_events", list_events_handler))
+    app.add_handler(CommandHandler("export_events", export_events_handler))
     app.add_handler(CommandHandler("update_event", update_event_handler))
     app.add_handler(CommandHandler("share_event", share_event_handler))
     app.add_handler(CommandHandler("unshare_event", unshare_event_handler))

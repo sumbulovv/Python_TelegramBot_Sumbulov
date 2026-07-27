@@ -1,3 +1,4 @@
+import json
 from datetime import date, time
 
 from django.test import TestCase
@@ -6,6 +7,8 @@ from .models import Appointment, Event, TelegramUser
 from .services import (
     AppointmentPermissionError,
     ParticipantBusyError,
+    create_event_export_token,
+    export_user_events,
     get_user_appointment_details,
     get_user_busy_intervals,
     invite_user_to_event,
@@ -174,3 +177,83 @@ class PublicEventTests(TestCase):
         self.private_event.refresh_from_db()
         self.assertIsNone(event)
         self.assertFalse(self.private_event.is_public)
+
+
+class EventExportTests(TestCase):
+    def setUp(self):
+        self.owner_user_id = 1001
+        self.other_user_id = 2002
+        self.owner = TelegramUser.objects.create(
+            telegram_id=self.owner_user_id,
+            name="Owner",
+        )
+        self.other_user = TelegramUser.objects.create(
+            telegram_id=self.other_user_id,
+            name="Other",
+        )
+        self.owner_event = Event.objects.create(
+            name="Owner planning",
+            date=date(2026, 7, 27),
+            time=time(10, 30),
+            details="Private owner event",
+            user_id=self.owner_user_id,
+            owner=self.owner,
+        )
+        self.other_event = Event.objects.create(
+            name="Other planning",
+            date=date(2026, 7, 28),
+            time=time(12, 0),
+            details="Other user event",
+            user_id=self.other_user_id,
+            owner=self.other_user,
+        )
+
+    def test_export_user_events_json_contains_only_owner_events(self):
+        export_result = export_user_events(self.owner_user_id, "json")
+        payload = json.loads(export_result["content"])
+
+        self.assertEqual(len(payload["events"]), 1)
+        self.assertEqual(payload["events"][0]["id"], self.owner_event.id)
+        self.assertNotEqual(payload["events"][0]["id"], self.other_event.id)
+
+    def test_export_user_events_csv_contains_only_owner_events(self):
+        export_result = export_user_events(self.owner_user_id, "csv")
+
+        self.assertIn("Owner planning", export_result["content"])
+        self.assertNotIn("Other planning", export_result["content"])
+        self.assertEqual(export_result["filename"], f"events_{self.owner_user_id}.csv")
+
+    def test_export_endpoint_returns_json_attachment_for_valid_token(self):
+        token = create_event_export_token(self.owner_user_id)
+
+        response = self.client.get(
+            "/events/export/",
+            {"token": token, "format": "json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response["Content-Disposition"],
+            f'attachment; filename="events_{self.owner_user_id}.json"',
+        )
+        payload = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(len(payload["events"]), 1)
+        self.assertEqual(payload["events"][0]["id"], self.owner_event.id)
+
+    def test_export_endpoint_rejects_invalid_token(self):
+        response = self.client.get(
+            "/events/export/",
+            {"token": "invalid-token", "format": "json"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_export_endpoint_rejects_unknown_format(self):
+        token = create_event_export_token(self.owner_user_id)
+
+        response = self.client.get(
+            "/events/export/",
+            {"token": token, "format": "xml"},
+        )
+
+        self.assertEqual(response.status_code, 400)

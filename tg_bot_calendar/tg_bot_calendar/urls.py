@@ -17,6 +17,9 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 
+from calendar_bot.views import export_events_view
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('events/export/', export_events_view, name='events-export'),
 ]
