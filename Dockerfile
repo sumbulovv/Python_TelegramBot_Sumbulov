@@ -12,3 +12,7 @@ RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
 COPY . .
+
+RUN chmod +x ./docker-entrypoint-admin.sh
+
+CMD [ "bash", "./docker-entrypoint-admin.sh" ]

@@ -15,24 +15,6 @@ services:
       timeout: 5s
       retries: 10
 
-  migrate:
-    build: .
-    environment:
-      DJANGO_DEBUG: ${DJANGO_DEBUG}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      CALENDAR_EXPORT_BASE_URL: ${CALENDAR_EXPORT_BASE_URL}
-    depends_on:
-      db:
-        condition: service_healthy
-    command: python tg_bot_calendar/manage.py migrate --noinput
-    restart: "no"
-
   admin:
     build: .
     environment:
@@ -50,9 +32,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    command: python tg_bot_calendar/manage.py runserver 0.0.0.0:8000
 
   bot:
     build: .
@@ -70,8 +49,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     command: python bot.py
 
 volumes:

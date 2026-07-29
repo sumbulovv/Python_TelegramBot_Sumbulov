@@ -1,7 +1,8 @@
 import logging
 import os
 from datetime import datetime
-from urllib.parse import urlencode
+from ipaddress import ip_address
+from urllib.parse import urlencode, urlparse
 
 from asgiref.sync import sync_to_async
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -28,6 +29,12 @@ from calendar_bot.services import (
 )
 
 logger = logging.getLogger(__name__)
+
+EVENT_EXPORT_UNAVAILABLE_TEXT = (
+    "Выгрузка событий временно недоступна: администратору нужно указать публичный "
+    "HTTP(S)-адрес в CALENDAR_EXPORT_BASE_URL. Локальные адреса вроде localhost "
+    "Telegram не принимает в inline-кнопках."
+)
 
 
 def _increment_statistics(field_name):
@@ -282,10 +289,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @require_registration
 async def export_events_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    reply_markup = _build_event_export_keyboard(user_id)
+    text = (
+        "Выберите формат выгрузки ваших событий. Ссылки действуют 24 часа."
+        if reply_markup
+        else EVENT_EXPORT_UNAVAILABLE_TEXT
+    )
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="Выберите формат выгрузки ваших событий. Ссылки действуют 24 часа.",
-        reply_markup=_build_event_export_keyboard(user_id),
+        text=text,
+        reply_markup=reply_markup,
     )
 
 
@@ -712,10 +725,19 @@ def _build_event_sharing_keyboard(events, user_id=None):
 
 
 def _build_event_export_keyboard(user_id):
-    return InlineKeyboardMarkup(_build_event_export_buttons(user_id))
+    buttons = _build_event_export_buttons(user_id)
+    return InlineKeyboardMarkup(buttons) if buttons else None
 
 
 def _build_event_export_buttons(user_id):
+    base_url = _get_event_export_base_url()
+    if not _is_public_http_url(base_url):
+        logger.warning(
+            "CALENDAR_EXPORT_BASE_URL must be a public HTTP(S) URL for Telegram inline buttons: %r",
+            base_url,
+        )
+        return []
+
     return [
         [
             InlineKeyboardButton(
@@ -731,7 +753,7 @@ def _build_event_export_buttons(user_id):
 
 
 def _build_event_export_url(user_id, export_format):
-    base_url = os.environ["CALENDAR_EXPORT_BASE_URL"].rstrip("/")
+    base_url = _get_event_export_base_url()
     query = urlencode(
         {
             "token": create_event_export_token(user_id),
@@ -739,6 +761,37 @@ def _build_event_export_url(user_id, export_format):
         }
     )
     return f"{base_url}/events/export/?{query}"
+
+
+def _get_event_export_base_url():
+    return os.environ.get("CALENDAR_EXPORT_BASE_URL", "").strip().rstrip("/")
+
+
+def _is_public_http_url(url):
+    parsed_url = urlparse(url)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        return False
+
+    hostname = (parsed_url.hostname or "").rstrip(".").lower()
+    if not hostname:
+        return False
+
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        return False
+
+    try:
+        address = ip_address(hostname)
+    except ValueError:
+        return "." in hostname
+
+    return not (
+        address.is_loopback
+        or address.is_private
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_unspecified
+        or address.is_multicast
+    )
 
 
 def _format_appointment_list_item(appointment, current_user_id):

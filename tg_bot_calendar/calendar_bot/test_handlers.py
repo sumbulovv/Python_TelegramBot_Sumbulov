@@ -1,9 +1,13 @@
+import os
 from datetime import date
 from urllib.parse import parse_qs, urlparse
+from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
 
 from tg_handlers import (
+    _build_event_export_buttons,
+    _build_event_export_keyboard,
     _build_event_export_url,
     _format_appointment_details,
     _format_event_line,
@@ -74,11 +78,20 @@ class HandlerParsingAndFormattingTests(SimpleTestCase):
         self.assertIn("Подтверждено", organizer_text)
 
     @override_settings(SECRET_KEY="test-secret-key")
+    @patch.dict(os.environ, {"CALENDAR_EXPORT_BASE_URL": "https://calendar.example.com"})
     def test_build_event_export_url_contains_signed_token_and_requested_format(self):
         url = _build_event_export_url(1001, "csv")
         parsed_url = urlparse(url)
         query = parse_qs(parsed_url.query)
 
+        self.assertEqual(parsed_url.scheme, "https")
+        self.assertEqual(parsed_url.netloc, "calendar.example.com")
         self.assertEqual(parsed_url.path, "/events/export/")
         self.assertEqual(query["format"], ["csv"])
         self.assertIn("token", query)
+
+    @patch.dict(os.environ, {"CALENDAR_EXPORT_BASE_URL": "http://localhost:8000"})
+    def test_event_export_keyboard_is_omitted_for_localhost_url(self):
+        with self.assertLogs("tg_handlers", level="WARNING"):
+            self.assertEqual(_build_event_export_buttons(1001), [])
+            self.assertIsNone(_build_event_export_keyboard(1001))
